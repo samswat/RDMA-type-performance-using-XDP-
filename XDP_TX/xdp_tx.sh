@@ -7,7 +7,7 @@ CFILE="xdp_tx.c"
 
 # The Rule to Install:
 # "Block packets COMING FROM this IP, destined for UDP Port 5201"
-SENDER_IP="192.168.64.5"   # <--- REPLACE THIS WITH YOUR CLIENT/SENDER IP!
+SENDER_IP="192.168.64.3"   # <--- REPLACE THIS WITH YOUR CLIENT/SENDER IP!
 TARGET_PORT="5201"         # The destination port to block
 PROTOCOL="17"              # 17 = UDP
 
