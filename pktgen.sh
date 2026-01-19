@@ -58,7 +58,6 @@ echo "Traffic is flowing. Press Ctrl+C to stop and exit."
 
 # --- MONITORING LOOP ---
 while true; do
-    clear
     echo "--- Pktgen Status (Press Ctrl+C to Stop) ---"
     cat /proc/net/pktgen/$INTERFACE
     sleep 1
