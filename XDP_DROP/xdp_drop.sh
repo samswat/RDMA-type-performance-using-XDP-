@@ -13,7 +13,11 @@ PROTOCOL="17"              # 17 = UDP
 
 # --- 1. COMPILE ---
 echo "Compiling XDP program..."
-clang -O2 -g -target bpf -c $CFILE -o $XDPOBJ
+
+clang -O2 -g -target bpf \
+  -I/usr/include/aarch64-linux-gnu \
+  -D__TARGET_ARCH_arm64 \
+  -c $CFILE -o $XDPOBJ
 
 if [ $? -ne 0 ]; then
     echo "Compilation failed!"
