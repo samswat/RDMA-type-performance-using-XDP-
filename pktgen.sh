@@ -5,7 +5,8 @@ INTERFACE="enp0s1"
 DEST_IP="192.168.64.4"
 DEST_MAC="5A:5B:AA:E3:4A:AB" # <--- IMPORTANT: Update this!
 PKT_SIZE="64"                            # 64 bytes for maximum PPS stress
-COUNT="0"                                # 0 = Infinite count
+# COUNT="0"    
+COUNT = "1000000"                            # 0 = Infinite count
 
 # --- SETUP ---
 echo "Loading pktgen module..."
