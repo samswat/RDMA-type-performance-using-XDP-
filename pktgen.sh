@@ -3,10 +3,28 @@
 # --- CONFIGURATION ---
 INTERFACE="enp0s1"
 DEST_IP="192.168.64.4"
-DEST_MAC="5A:5B:AA:E3:4A:AB" # <--- IMPORTANT: Update this!
-PKT_SIZE="64"                            # 64 bytes for maximum PPS stress
-# COUNT="0"    
-COUNT = "1000000"                            # 0 = Infinite count
+DEST_MAC="5A:5B:AA:E3:4A:AB" 
+PKT_SIZE="64"                            
+COUNT="0"                 # 0 = Infinite (Use Ctrl+C to stop)
+
+# UDP PORT SETTINGS (Both locked to 5201)
+UDP_SRC_MIN=5201        # <--- CHANGED: Locked to 5201
+UDP_SRC_MAX=5201        # <--- CHANGED: Locked to 5201
+UDP_DST_MIN=5201
+UDP_DST_MAX=5201
+
+# --- TRAP FUNCTION ---
+cleanup() {
+    echo ""
+    echo "!!! Ctrl+C Detected !!!"
+    echo "Stopping packet generation..."
+    echo "stop" > /proc/net/pktgen/pgctrl
+    echo "Traffic stopped successfully."
+    exit 0
+}
+
+# Register the trap
+trap cleanup SIGINT
 
 # --- SETUP ---
 echo "Loading pktgen module..."
@@ -14,27 +32,34 @@ modprobe pktgen
 
 # Clear existing configuration
 echo "rem_device_all" > /proc/net/pktgen/kpktgend_0
-
-# Add the device to the kernel thread
 echo "add_device $INTERFACE" > /proc/net/pktgen/kpktgend_0
 
 # --- CONFIGURE THE DEVICE ---
 echo "Configuring $INTERFACE..."
 PGDEV=/proc/net/pktgen/$INTERFACE
 
-echo "count $COUNT" > $PGDEV           # How many packets to send
-echo "clone_skb 100000" > $PGDEV       # Reuse the same packet structure (faster)
-echo "pkt_size $PKT_SIZE" > $PGDEV     # Packet size
-echo "delay 0" > $PGDEV                # No delay (maximum speed)
-echo "dst $DEST_IP" > $PGDEV           # Destination IP
-echo "dst_mac $DEST_MAC" > $PGDEV      # Destination MAC
+echo "count $COUNT" > $PGDEV           
+echo "clone_skb 100000" > $PGDEV       
+echo "pkt_size $PKT_SIZE" > $PGDEV     
+echo "delay 0" > $PGDEV                
+echo "dst $DEST_IP" > $PGDEV           
+echo "dst_mac $DEST_MAC" > $PGDEV      
+
+# Set UDP Ports
+echo "udp_src_min $UDP_SRC_MIN" > $PGDEV
+echo "udp_src_max $UDP_SRC_MAX" > $PGDEV
+echo "udp_dst_min $UDP_DST_MIN" > $PGDEV
+echo "udp_dst_max $UDP_DST_MAX" > $PGDEV
 
 # --- START TRAFFIC ---
 echo "Starting packet generation..."
 echo "start" > /proc/net/pktgen/pgctrl
+echo "Traffic is flowing. Press Ctrl+C to stop and exit."
 
-echo "Done! Traffic is flowing. Press Ctrl+C to stop monitoring."
-
-# --- MONITORING ---
-# Watch the stats in real-time
-watch -n 1 "cat /proc/net/pktgen/$INTERFACE"
+# --- MONITORING LOOP ---
+while true; do
+    clear
+    echo "--- Pktgen Status (Press Ctrl+C to Stop) ---"
+    cat /proc/net/pktgen/$INTERFACE
+    sleep 1
+done
