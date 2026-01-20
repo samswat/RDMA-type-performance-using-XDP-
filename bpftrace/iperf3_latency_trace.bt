@@ -8,7 +8,6 @@ BEGIN
 
 /* * 1. SYSCALL LAYER
  * Capture when iperf3 calls the send() function. 
- * We store the current time keyed by the Thread ID (tid).
  */
 tracepoint:syscalls:sys_enter_sendto, 
 tracepoint:syscalls:sys_enter_sendmsg,
@@ -18,36 +17,32 @@ tracepoint:syscalls:sys_enter_write
     @start_time[tid] = nsecs;
 }
 
-/* * 2. KERNEL MEMORY LAYER (The Bottleneck)
+/* * 2. KERNEL MEMORY LAYER
  * Capture when the kernel finishes allocating the sk_buff.
- * We match this to the Thread ID, then switch to tracking the SKB pointer.
  */
 kretprobe:__alloc_skb
 /comm == "iperf3"/
 {
-    // Check if we tracked the start time for this thread
     if (@start_time[tid]) {
-        $skb = (uint64)retval;  // Get the memory address of the new packet
+        // Cast retval to uint64 so the map expects a number key
+        $skb = (uint64)retval;  
         $ts_start = @start_time[tid];
         
-        // Map the SKB address to the start time
         @skb_birth[$skb] = $ts_start;
-        @skb_allocated[$skb] = nsecs; // Record time of allocation
+        @skb_allocated[$skb] = nsecs;
         
-        // Clear thread tracker (job done for this layer)
         delete(@start_time[tid]);
     }
 }
 
 /* * 3. DRIVER LAYER
  * Capture when the packet is finally handed to the NIC driver.
- * We look up the SKB address to calculate the total duration.
  */
 tracepoint:net:net_dev_start_xmit
 {
-    $skb = args->skbaddr;
+    // FIX: Explicitly cast the pointer to uint64 to match the map key
+    $skb = (uint64)args->skbaddr;
     
-    // Check if this is one of our tracked iperf3 packets
     if (@skb_birth[$skb]) {
         $start = @skb_birth[$skb];
         $alloc = @skb_allocated[$skb];
@@ -61,7 +56,6 @@ tracepoint:net:net_dev_start_xmit
         printf("0x%-16lx %-12d %-12d %-12d\n", 
                $skb, $lat_sys_alloc, $lat_alloc_drv, $total_lat);
 
-        // Cleanup
         delete(@skb_birth[$skb]);
         delete(@skb_allocated[$skb]);
     }
