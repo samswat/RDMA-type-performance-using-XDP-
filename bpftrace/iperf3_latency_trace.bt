@@ -1,14 +1,14 @@
 #!/usr/bin/env bpftrace
 
-BEGIN
-{
-    printf("Tracing iperf3 packet latency... Hit Ctrl+C to stop.\n");
-    printf("%-18s %-12s %-12s %-12s\n", "SKB_ADDR", "SYS->ALLOC", "ALLOC->DRV", "TOTAL(us)");
-}
-
-/* * 1. SYSCALL LAYER
- * Capture when iperf3 calls the send() function. 
+/* * NOTE: Headers removed to fix "BEGIN_trigger" error.
+ * Columns are: 
+ * 1. SKB Address (Hex)
+ * 2. User->Kernel Latency (us)
+ * 3. Kernel->Driver Latency (us)
+ * 4. Total Latency (us)
  */
+
+/* * 1. SYSCALL LAYER */
 tracepoint:syscalls:sys_enter_sendto, 
 tracepoint:syscalls:sys_enter_sendmsg,
 tracepoint:syscalls:sys_enter_write
@@ -17,9 +17,7 @@ tracepoint:syscalls:sys_enter_write
     @start_time[tid] = nsecs;
 }
 
-/* * 2. KERNEL MEMORY LAYER
- * Capture when the kernel finishes allocating the sk_buff.
- */
+/* * 2. KERNEL MEMORY LAYER */
 kretprobe:__alloc_skb
 /comm == "iperf3"/
 {
@@ -35,12 +33,10 @@ kretprobe:__alloc_skb
     }
 }
 
-/* * 3. DRIVER LAYER
- * Capture when the packet is finally handed to the NIC driver.
- */
+/* * 3. DRIVER LAYER */
 tracepoint:net:net_dev_start_xmit
 {
-    // FIX: Explicitly cast the pointer to uint64 to match the map key
+    // Explicitly cast the pointer to uint64
     $skb = (uint64)args->skbaddr;
     
     if (@skb_birth[$skb]) {
