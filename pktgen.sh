@@ -13,6 +13,12 @@ UDP_SRC_MAX=5201        # <--- CHANGED: Locked to 5201
 UDP_DST_MIN=5201
 UDP_DST_MAX=5201
 
+
+# CONTROL SPEEDS
+PPS="10000"             # <--- NEW: Desired Packets Per Second
+# CLONE_SKB="100000"    # <--- OLD: Causes bursts, bad for rate control
+CLONE_SKB="0"
+
 # --- TRAP FUNCTION ---
 cleanup() {
     echo ""
@@ -39,11 +45,12 @@ echo "Configuring $INTERFACE..."
 PGDEV=/proc/net/pktgen/$INTERFACE
 
 echo "count $COUNT" > $PGDEV           
-echo "clone_skb 100000" > $PGDEV       
+echo "clone_skb $CLONE_SKB" > $PGDEV       
 echo "pkt_size $PKT_SIZE" > $PGDEV     
 echo "delay 0" > $PGDEV                
 echo "dst $DEST_IP" > $PGDEV           
 echo "dst_mac $DEST_MAC" > $PGDEV      
+echo "ratep $PPS" > $PGDEV
 
 # Set UDP Ports
 echo "udp_src_min $UDP_SRC_MIN" > $PGDEV
