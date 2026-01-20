@@ -1,0 +1,68 @@
+#!/usr/bin/env bpftrace
+
+BEGIN
+{
+    printf("Tracing iperf3 packet latency... Hit Ctrl+C to stop.\n");
+    printf("%-18s %-12s %-12s %-12s\n", "SKB_ADDR", "SYS->ALLOC", "ALLOC->DRV", "TOTAL(us)");
+}
+
+/* * 1. SYSCALL LAYER
+ * Capture when iperf3 calls the send() function. 
+ * We store the current time keyed by the Thread ID (tid).
+ */
+tracepoint:syscalls:sys_enter_sendto, 
+tracepoint:syscalls:sys_enter_sendmsg,
+tracepoint:syscalls:sys_enter_write
+/comm == "iperf3"/
+{
+    @start_time[tid] = nsecs;
+}
+
+/* * 2. KERNEL MEMORY LAYER (The Bottleneck)
+ * Capture when the kernel finishes allocating the sk_buff.
+ * We match this to the Thread ID, then switch to tracking the SKB pointer.
+ */
+kretprobe:__alloc_skb
+/comm == "iperf3"/
+{
+    // Check if we tracked the start time for this thread
+    if (@start_time[tid]) {
+        $skb = (uint64)retval;  // Get the memory address of the new packet
+        $ts_start = @start_time[tid];
+        
+        // Map the SKB address to the start time
+        @skb_birth[$skb] = $ts_start;
+        @skb_allocated[$skb] = nsecs; // Record time of allocation
+        
+        // Clear thread tracker (job done for this layer)
+        delete(@start_time[tid]);
+    }
+}
+
+/* * 3. DRIVER LAYER
+ * Capture when the packet is finally handed to the NIC driver.
+ * We look up the SKB address to calculate the total duration.
+ */
+tracepoint:net:net_dev_start_xmit
+{
+    $skb = args->skbaddr;
+    
+    // Check if this is one of our tracked iperf3 packets
+    if (@skb_birth[$skb]) {
+        $start = @skb_birth[$skb];
+        $alloc = @skb_allocated[$skb];
+        $now = nsecs;
+
+        // Calculate deltas in microseconds
+        $lat_sys_alloc = ($alloc - $start) / 1000;
+        $lat_alloc_drv = ($now - $alloc) / 1000;
+        $total_lat     = ($now - $start) / 1000;
+
+        printf("0x%-16lx %-12d %-12d %-12d\n", 
+               $skb, $lat_sys_alloc, $lat_alloc_drv, $total_lat);
+
+        // Cleanup
+        delete(@skb_birth[$skb]);
+        delete(@skb_allocated[$skb]);
+    }
+}
