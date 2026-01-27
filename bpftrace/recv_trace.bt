@@ -1,22 +1,20 @@
 #!/usr/bin/env bpftrace
 
-/* * NOTE: Headers removed to fix "BEGIN_trigger" error.
- * * COLUMNS:
+/* * COLUMNS:
  * 1. SKB Address (Hex)
  * 2. DRIVER->IP Latency (us)  [Time to strip Ethernet & Firewall]
  * 3. IP->SOCKET Latency (us)  [Time to Route & Enqueue]
  * 4. TOTAL Receiver Latency (us)
  */
 
-/* * 1. DRIVER LAYER (Start) */
+/* 1. DRIVER LAYER (Start) */
 tracepoint:net:netif_receive_skb
 {
-    // Store start time when packet leaves driver
     $skb = (uint64)args->skbaddr;
     @rx_start[$skb] = nsecs;
 }
 
-/* * 2. IP LAYER (Routing) */
+/* 2. IP LAYER (Routing) */
 kprobe:ip_local_deliver
 {
     $skb = (uint64)arg0;
@@ -25,7 +23,7 @@ kprobe:ip_local_deliver
     }
 }
 
-/* * 3. SOCKET LAYER (End) */
+/* 3. SOCKET LAYER (End) */
 kprobe:udp_queue_rcv_skb
 {
     $skb = (uint64)arg1; 
@@ -45,13 +43,8 @@ kprobe:udp_queue_rcv_skb
                     $skb, $lat_drv_ip, $lat_ip_sock, $total);
         }
 
+        // Self-cleaning: Delete the keys immediately after printing
         delete(@rx_start[$skb]);
         delete(@rx_ip[$skb]);
     }
-}
-
-/* Cleanup */
-interval:s:5 {
-    clear(@rx_start);
-    clear(@rx_ip);
 }
