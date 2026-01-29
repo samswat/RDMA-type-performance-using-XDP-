@@ -1,19 +1,22 @@
 #!/usr/bin/env bpftrace
 
-/* * Tracks time spent in NET_RX (Receive) and NET_TX (Send) SoftIRQs per CPU.
- * USAGE: sudo ./softirq_cpu.bt
- * * NOTE: Output is in MICROSECONDS per SECOND. 
- * 1,000,000 us = 100% CPU utilization for that core.
+/* * Tracks SoftIRQ CPU Usage (Average % over 5 seconds).
+ * * USAGE: sudo ./softirq_cpu_avg_5s.bt
+ * * * MATH EXPLANATION:
+ * - We collect data for 5 seconds (5,000,000 microseconds).
+ * - To get the average % load, we divide the total time spent
+ * by the total time window.
+ * - Divisor = 5,000,000 / 100 = 50,000.
  */
 
-/* 1. ENTRY: Triggered when the CPU starts handling a SoftIRQ */
+/* 1. ENTRY */
 tracepoint:irq:softirq_entry
 /args->vec == 3 || args->vec == 2/
 {
     @start[cpu] = nsecs;
 }
 
-/* 2. EXIT: Triggered when the CPU finishes the SoftIRQ */
+/* 2. EXIT */
 tracepoint:irq:softirq_exit
 /args->vec == 3 || args->vec == 2/
 {
@@ -22,20 +25,23 @@ tracepoint:irq:softirq_exit
     if ($s != 0) {
         $delta = (nsecs - $s) / 1000; // Duration in microseconds
         
-        // Accumulate time per CPU and Vector type
-        // vec 2 = NET_TX (Send), vec 3 = NET_RX (Receive)
+        // Accumulate raw microseconds
+        // vec 2 = TX, vec 3 = RX
         @us_per_cpu_vec[cpu, args->vec] = sum($delta);
         
         delete(@start[cpu]);
     }
 }
 
-/* 3. REPORT: Every 1 second */
-interval:s:1
+/* 3. REPORT: Every 5 seconds */
+interval:s:5
 {
-    time("%H:%M:%S ");
-    printf("--- SoftIRQ Usage (microseconds per sec) ---\n");
+    time("%H:%M:%S \n");
+    printf("--- Average SoftIRQ CPU Load (Last 5s) in %% ---\n");
     printf("Key: [CPU_ID, VECTOR_ID] (2=TX, 3=RX)\n");
-    print(@us_per_cpu_vec);
+    
+    // We divide by 50,000 to normalize the 5-second sum into a 0-100% average
+    print(@us_per_cpu_vec, 50, 50000);
+    
     clear(@us_per_cpu_vec);
 }

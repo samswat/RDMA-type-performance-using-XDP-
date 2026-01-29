@@ -1,14 +1,14 @@
 #!/usr/bin/env bpftrace
 
-/* * NOTE: Headers removed to fix "BEGIN_trigger" error.
- * Columns are: 
- * 1. SKB Address (Hex)
- * 2. User->Kernel Latency (us)
- * 3. Kernel->Driver Latency (us)
- * 4. Total Latency (us)
+/* * tx_lat_hist.bt
+ * Measures Sender Latency using Histograms.
+ * * OUTPUT:
+ * - Syscall->Alloc: Time from iperf calling send() to kernel allocating memory.
+ * - Alloc->Driver: Time from allocation to handing packet to NIC driver.
+ * - Total: Full transmit path latency (User -> Driver).
  */
 
-/* * 1. SYSCALL LAYER */
+/* 1. SYSCALL LAYER (Start) */
 tracepoint:syscalls:sys_enter_sendto, 
 tracepoint:syscalls:sys_enter_sendmsg,
 tracepoint:syscalls:sys_enter_write
@@ -17,12 +17,11 @@ tracepoint:syscalls:sys_enter_write
     @start_time[tid] = nsecs;
 }
 
-/* * 2. KERNEL MEMORY LAYER */
+/* 2. KERNEL MEMORY LAYER (Allocation) */
 kretprobe:__alloc_skb
 /comm == "iperf3"/
 {
     if (@start_time[tid]) {
-        // Cast retval to uint64 so the map expects a number key
         $skb = (uint64)retval;  
         $ts_start = @start_time[tid];
         
@@ -33,10 +32,9 @@ kretprobe:__alloc_skb
     }
 }
 
-/* * 3. DRIVER LAYER */
+/* 3. DRIVER LAYER (End) */
 tracepoint:net:net_dev_start_xmit
 {
-    // Explicitly cast the pointer to uint64
     $skb = (uint64)args->skbaddr;
     
     if (@skb_birth[$skb]) {
@@ -49,10 +47,25 @@ tracepoint:net:net_dev_start_xmit
         $lat_alloc_drv = ($now - $alloc) / 1000;
         $total_lat     = ($now - $start) / 1000;
 
-        printf("0x%-16lx %-12d %-12d %-12d\n", 
-               $skb, $lat_sys_alloc, $lat_alloc_drv, $total_lat);
+        // Store in histograms instead of printing
+        @dist_Syscall_to_Alloc_us = hist($lat_sys_alloc);
+        @dist_Alloc_to_Driver_us  = hist($lat_alloc_drv);
+        @dist_Total_Tx_Latency_us = hist($total_lat);
 
         delete(@skb_birth[$skb]);
         delete(@skb_allocated[$skb]);
     }
+}
+
+/* Print summary every 5 seconds */
+interval:s:5 {
+    time("%H:%M:%S \n");
+    print(@dist_Syscall_to_Alloc_us);
+    print(@dist_Alloc_to_Driver_us);
+    print(@dist_Total_Tx_Latency_us);
+    
+    // Clear data for the next batch
+    clear(@dist_Syscall_to_Alloc_us);
+    clear(@dist_Alloc_to_Driver_us);
+    clear(@dist_Total_Tx_Latency_us);
 }
