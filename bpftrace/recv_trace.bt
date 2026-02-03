@@ -1,7 +1,7 @@
 #!/usr/bin/env bpftrace
 
-/* * rx_lat_hist.bt
- * Measures Receiver Latency using Histograms.
+/* * rx_lat_hist_udp.bt
+ * Measures Receiver Latency for UDP using Histograms.
  */
 
 /* 1. DRIVER LAYER (Start) */
@@ -20,8 +20,8 @@ kprobe:ip_local_deliver
     }
 }
 
-/* 3. SOCKET LAYER (End) - Changed to handle TCP & UDP */
-kprobe:sock_queue_rcv_skb
+/* 3. SOCKET LAYER (End) - Back to UDP Specific */
+kprobe:udp_queue_rcv_skb
 {
     $skb = (uint64)arg1; 
     
@@ -30,6 +30,7 @@ kprobe:sock_queue_rcv_skb
         $ip_ts = @rx_ip[$skb];
         $now = nsecs;
 
+        // Calculate latencies in MICROSECONDS
         if ($ip_ts != 0) {
              $drv_ip  = ($ip_ts - $start) / 1000;
              $ip_sock = ($now - $ip_ts)  / 1000;
@@ -39,8 +40,8 @@ kprobe:sock_queue_rcv_skb
              @dist_IP_to_Socket_us = hist($ip_sock);
              @dist_Total_Latency_us = hist($total);
              
-             // Separate map for the average calculation
-             @avg_total_us = avg($total);
+             // Use a separate aggregator for the average
+             @avg_latency_total = avg($total);
         }
 
         delete(@rx_start[$skb]);
@@ -48,6 +49,7 @@ kprobe:sock_queue_rcv_skb
     }
 }
 
+/* Print summary every 5 seconds */
 interval:s:5 {
     time("%H:%M:%S \n");
     
@@ -55,15 +57,19 @@ interval:s:5 {
     print(@dist_IP_to_Socket_us);
     print(@dist_Total_Latency_us);
     
-    // Correct way to print the average
-    print(@avg_total_us);
+    // Print the calculated average
+    printf("DATA_AVG_LATENCY_US: ");
+    print(@avg_latency_total);
     
+    // Clear distributions
     clear(@dist_Driver_to_IP_us);
     clear(@dist_IP_to_Socket_us);
     clear(@dist_Total_Latency_us);
-    clear(@avg_total_us);
+    clear(@avg_latency_total);
 
-    /* Anti-leak: Clean up stale entries from dropped packets */
+    /* * IMPORTANT: Clear tracking maps to prevent memory leaks 
+     * from packets that never reach the UDP socket (e.g. dropped by firewall)
+     */
     clear(@rx_start);
     clear(@rx_ip);
 }
