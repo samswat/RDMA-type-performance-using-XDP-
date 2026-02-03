@@ -67,9 +67,5 @@ interval:s:5 {
     clear(@dist_Total_Latency_us);
     clear(@avg_latency_total);
 
-    /* * IMPORTANT: Clear tracking maps to prevent memory leaks 
-     * from packets that never reach the UDP socket (e.g. dropped by firewall)
-     */
-    clear(@rx_start);
-    clear(@rx_ip);
+
 }
