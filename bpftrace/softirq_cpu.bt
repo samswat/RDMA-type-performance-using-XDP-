@@ -42,6 +42,11 @@ interval:s:5
     
     // We divide by 50,000 to normalize the 5-second sum into a 0-100% average
     print(@us_per_cpu_vec, 50, 50000);
+
+    // Print raw data for parsing: CPU, VEC, US_TOTAL
+    // VEC 3 is NET_RX
+    printf("DATA_SOFTIRQ_RX: ");
+    print(@us_per_cpu_vec);
     
     clear(@us_per_cpu_vec);
 }
