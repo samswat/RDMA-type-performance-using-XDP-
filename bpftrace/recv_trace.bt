@@ -53,8 +53,7 @@ kprobe:udp_queue_rcv_skb
 interval:s:5 {
     time("%H:%M:%S \n");
     
-    print(@dist_Driver_to_IP_us);
-    print(@dist_IP_to_Socket_us);
+
     print(@dist_Total_Latency_us);
     
     // Print the calculated average
